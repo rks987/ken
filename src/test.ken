@@ -1,4 +1,4 @@
-%/include wombat.wh
+%/include ken.kh
 
     `fact = { case $:Nat of [
                 { $ = 0; 1}

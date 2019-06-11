@@ -1,20 +1,27 @@
 # lexer.py -- turn file into iterator of tokens
 
+import typing as T
 import collections as C
 
-TokTT = C.namedtuple('TokTT',['text','tType'])
-Token = C.namedtuple('Token',['tT','indent','whiteB4','location'])
+class TokTT(T.NamedTuple):
+    text:str
+    tType:str
+class Token(T.NamedTuple):
+    tT:TokTT
+    indent:int
+    whiteB4:bool
+    location:T.Tuple[str,int,int]
 
 import utility as U
 import re
-white = re.compile(r"\s*") # always matches
-upSlash = re.compile(r"\%\/")
+white: T.Pattern[str] = re.compile(r"\s*") # always matches
+upSlash: T.Pattern[str] = re.compile(r"\%\/")
 
 import decimal
-TokenClass = C.namedtuple('TokenClass',['tokRE','adjust','tType'])
-tokenClassByPrio = {}  # value for each TokenClass: list of (pattern,adjustment,tType)
-tokenClassPrios = []   # keep sorted list of Prios, 
-def insertTokenClass(prio, tokenClass):
+TokenClass = T.NamedTuple('TokenClass',[('tokRE',T.Pattern[str]),('adjust',str),('tType',str)])
+tokenClassByPrio:T.Dict[int,TokenClass] = {}  # value for each TokenClass: list of (pattern,adjustment,tType)
+tokenClassPrios:T.List[int] = []   # keep sorted list of Prios, 
+def insertTokenClass(prio:int, tokenClass:TokenClass):
     global tokenClassPrios
     if prio in tokenClassByPrio:
         tokenClassByPrio[prio].append(tokenClass)
@@ -23,20 +30,20 @@ def insertTokenClass(prio, tokenClass):
         tokenClassPrios = sorted([*iter(tokenClassByPrio.keys())],reverse=True)
     return
 
-def lexer(fileName):
-    lineNum = 0
+def lexer(fileName:str):
+    lineNum:int = 0
     yield Token(tT=TokTT(text="!!SOF",tType="OperatorOnly"),indent=0,whiteB4=False,
                location=(fileName,0,0))
     # should allow %\ at end of line to split long lines (or %+ at start of next ?)
-    for line in open(fileName, "r", encoding="utf-8"):
-        whiteB4 = True # at a new line
+    for line:str in open(fileName, "r", encoding="utf-8"):
+        whiteB4:bool = True # at a new line
         lineNum += 1
-        indentM = white.match(line)
-        indent = len(indentM[0]) # set to -1 after 1st token
-        pos = indent
+        indentM:T.Match[str] = white.match(line)
+        indent:int = len(indentM[0]) # set to -1 after 1st token
+        pos:int = indent
         if upSlash.match(line,indent):
             # lex command
-            m = re.compile(r"include\s+(\S+)\n?").fullmatch(line,indent+2)
+            m:T.Match[str] = re.compile(r"include\s+(\S+)\n?").fullmatch(line,indent+2)
             if m:
                 yield from lexer(m[1])  # recurse
             else:
