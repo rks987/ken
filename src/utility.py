@@ -1,3 +1,5 @@
+import typing as T
+
 def die(s,fn,lineNum,pos):
     #raise Exception(s+" in "+fn+"("+str(lineNum)+"/"+str(pos)+")")
     breakpoint()
@@ -11,7 +13,7 @@ def unquote(s:str)->str: # remove leading/trailing " and convert \\ to \ and \" 
     assert s[0]=='"' and s[-1]=='"' and s[1]!='"' and s[-2]!='\\' and re.search(r'[^\\]"',s[1:-1])==None
     return re.sub(r'\\(.)',r'\1',s[1:-1])
 
-def findDeep(x,it)->Bool:
+def findDeep(x,it)->bool:
     if x==it: 
         return True
     else:
@@ -23,7 +25,7 @@ def findDeep(x,it)->Bool:
         except: # should check for TypeError only? FIXME
             return False
 
-def evalCallable(s:str) -> T.Callable[Any,Any]: # string s should give a callable, for None return None
+def evalCallable(s:str) -> T.Callable[[T.Any],T.Any]: # string s should give a callable, for None return None
     if s==None: return None
     rslt = eval(s)
     assert callable(rslt) # still needed I think ??

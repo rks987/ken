@@ -1,60 +1,58 @@
-%/token Comment 100 #(?P<token>.*)
+%/token Comment "# to eol" 100 #(?P<token>.*)
 # ken.kh
-%/token FreeVariable 100 _(?P<token>[a-zA-Z0-9]+'*)
-%/token NewFreeVariable 100 `_(?P<token>[a-zA-Z0-9]+'*)
-%/token Identifier 100 (?P<token>[a-zA-Z][_a-zA-Z0-9]*'*)
-%/token NewIdentifier 100 `(?P<token>[a-zA-Z][_a-zA-Z0-9]*'*)
+%/token FreeVariable "_id" 100 _(?P<token>[a-zA-Z0-9]+'*)
+%/token NewFreeVariable "`_id" 100 `_(?P<token>[a-zA-Z0-9]+'*)
+%/token Identifier "id" 100 (?P<token>[a-zA-Z][_a-zA-Z0-9]*'*)
+%/token NewIdentifier "`id" 100 `(?P<token>[a-zA-Z][_a-zA-Z0-9]*'*)
 # unquote is a compile time language (python) procedure to remove quotes
-%/token String 100 "unquote" (?P<token>"(\\"|\\\\|[^"\\])*")
-%/token Number 100 (?P<token>[0-9]+(\.[0-9]+)?)
-%/token Atom 100 \.(?P<token>[a-zA-Z0-9]+)
-%/token OperatorOnly 100 (?P<token>`*\('*)
-%/token OperatorOnly 100 (?P<token>`*\)'*)
-%/token OperatorOnly 100 (?P<token>`*\['*)
-%/token OperatorOnly 100 (?P<token>`*\]'*)
-%/token OperatorOnly 100 (?P<token>`*\{'*)
-%/token OperatorOnly 100 (?P<token>`*\}'*)
-%/token OperatorOnly 100 (?P<token>`*[~!@\$%\^&*\-+=|:;<>,.?/]+'*)
-%/token MCTcmd 100 %\^(?P<token>[^\n]*)\n?
-%/token MCTast 100 %\{(?P<token>.*)%\}
-%/token OperatorOnly 100 (?P<token>`*_'*)
-%/token OperatorOnly 100 (?P<token>``+[a-zA-Z][_a-zA-Z0-9]*'*)
-%/token OperatorOnly 100 (?P<token>`*\$[a-zA-Z0-9\$_]*'*)
+%/token String "double-quoted string" 100 "unquote" (?P<token>"(\\"|\\\\|[^"\\])*")
+%/token Number "positive decimal" 100 (?P<token>[0-9]+(\.[0-9]+)?)
+%/token Atom ".id or .num" 100 \.(?P<token>[a-zA-Z0-9]+)
+%/token OperatorOnly "(" 100 (?P<token>`*\('*)
+%/token OperatorOnly ")" 100 (?P<token>`*\)'*)
+%/token OperatorOnly "[" 100 (?P<token>`*\['*)
+%/token OperatorOnly "]" 100 (?P<token>`*\]'*)
+%/token OperatorOnly "{" 100 (?P<token>`*\{'*)
+%/token OperatorOnly "}" 100 (?P<token>`*\}'*)
+%/token OperatorOnly "op not %" 100 (?P<token>`*[~!@\$\^&*\-+=|:;<>,.?/]+'*)
+%/token KCTcmd "KCT command" 100 %\^(?P<token>[^\n]*)\n?
+%/token KCTast "KCT ast??" 100 %\{(?P<token>.*)%\}
+%/token OperatorOnly "_" 100 (?P<token>`*_'*)
+%/token OperatorOnly "???" 100 (?P<token>``+[a-zA-Z][_a-zA-Z0-9]*'*)
+#%/token OperatorOnly "????" 100 (?P<token>`*\$[a-zA-Z0-9\$_]*'*)
 
 # Note that in ken, all operators map to calls to Mode properties.
 # So the following is all wrong.
-# f x
-%^operator "A.callOp" (100) [" "] (200)
-# f(x)
-%^operator "A.callOp" (100) [""] (200)
+%^operator "call with space: f x" "A.callOp" (100) [" "] (200)
+%^operator "call no space: f(x)" "A.callOp" (100) [""] (200) 
 # ( expr )
-%^operator "None" ["("] () [")"]
+%^operator "parens:( expr )" "None" ["("] () [")"]
 # [] -- empty list
-%^operator "A.AstCall(A.AstTuple(members=(A.AstIdentifier('tuple2list'),A.zeroTuple())))" ["["] ["]"]
+%^operator "empty list: [ ]" "A.AstCall(A.AstTuple(members=(A.AstIdentifier('tuple2list'),A.zeroTuple())))" ["["] ["]"]
 # [ 1 2 3 ]
-%^operator "A.AstIdentifier('consTuple2list')" ["["] () [" " repeating] () ["]"]
+%^operator "nonempty list: [1, 2]" "A.AstIdentifier('consTuple2list')" ["["] () [" " repeating] () ["]"]
 # [1 | [2 3]] -- but more used for pattern matching
-%^operator "A.AstIdentifier('prependList')" ["["] () ["|"] () ["]"]
+%^operator "prepend to list: [1 | [2 3]]" "A.AstIdentifier('prependList')" ["["] () ["|"] () ["]"]
 # unification! -- lowish priority, left but it doesn't matter
-%^operator "A.AstIdentifier('equal')" (20) ["="] (21)
+%^operator "unify: expr1=expr2" "A.AstIdentifier('equal')" (20) ["="] (21)
 # { expr } -- an Any=>Any
-%^operator "A.toClosure" ["{"] () ["}"]
+%^operator "closure: { expr }" "A.toClosure" ["{"] () ["}"]
 # case exp of [ {option1 } {option2} {option3} ] -- passed to each, only one succeeds
-%^operator "A.AstIdentifier('casePswap')" ["case"] () ["of"] (999)
+%^operator "case expr of proc-list" "A.AstIdentifier('casePswap')" ["case"] () ["of"] (999)
 # loc Int:Int, (3+0i):Rational
-%^operator "A.AstIdentifier('toType')" (90) [":"] (91)
+%^operator "convert to type: x:T" "A.AstIdentifier('toType')" (90) [":"] (91)
 # 3::Rational
-%^operator "A.AstIdentifier('isType')" (90) ["::"] (91)
+%^operator "view as type: x::T" "A.AstIdentifier('isType')" (90) ["::"] (91)
 # $ -- no left or right
-%^operator "A.AstClParam()" ["$"]
+%^operator "parmeter: $" "A.AstClParam()" ["$"]
 # 3 >=? 4 -- returns left operand or fails
-%^operator "A.AstIdentifier('geOrFail')" (24) [">=?"] (25)
+%^operator "ge or fail: x>=?y" "A.AstIdentifier('geOrFail')" (24) [">=?"] (25)
 # 2*3
-%^operator "A.AstIdentifier('starOp')" (38) ["*"] (39)
+%^operator "multiply: x*y" "A.AstIdentifier('starOp')" (38) ["*"] (39)
 # 2-3
-%^operator "A.AstIdentifier('subtract')" (34) ["-"] (35)
+%^operator "subtract: x-y" "A.AstIdentifier('subtract')" (34) ["-"] (35)
 # statement;expression -- right assoc, but really associative
-%^operator "A.AstIdentifier('statements')" (2) [";"] (1)
+%^operator "seq: expr1;expr2" "A.AstIdentifier('statements')" (2) [";"] (1)
 
 #    `fact = { case $:Nat of [
 #                { $ = 0; 1}

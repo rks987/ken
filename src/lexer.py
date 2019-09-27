@@ -18,7 +18,7 @@ white: T.Pattern[str] = re.compile(r"\s*") # always matches
 upSlash: T.Pattern[str] = re.compile(r"\%\/")
 
 import decimal
-TokenClass = T.NamedTuple('TokenClass',[('tokRE',T.Pattern[str]),('adjust',str),('tType',str)])
+TokenClass = T.NamedTuple('TokenClass',[('tokRE',T.Pattern[str]),('adjust',str),('tType',str),('tComment',str)])
 tokenClassByPrio:T.Dict[int,TokenClass] = {}  # value for each TokenClass: list of (pattern,adjustment,tType)
 tokenClassPrios:T.List[int] = []   # keep sorted list of Prios, 
 def insertTokenClass(prio:int, tokenClass:TokenClass):
@@ -35,7 +35,7 @@ def lexer(fileName:str):
     yield Token(tT=TokTT(text="!!SOF",tType="OperatorOnly"),indent=0,whiteB4=False,
                location=(fileName,0,0))
     # should allow %\ at end of line to split long lines (or %+ at start of next ?)
-    for line:str in open(fileName, "r", encoding="utf-8"):
+    for line in open(fileName, "r", encoding="utf-8"):
         whiteB4:bool = True # at a new line
         lineNum += 1
         indentM:T.Match[str] = white.match(line)
@@ -48,13 +48,13 @@ def lexer(fileName:str):
                 yield from lexer(m[1])  # recurse
             else:
                 #e.g. %/token String 100 "U.unquote" (?P<token>"(\\"|\\\\|[^"\\])*")
-                n = re.compile(r'token\s+(\w+)\s+(\d+\.?\d*)\s+("(?:[^\\"]|\\.)*")?\s*([^\n]+)')\
+                n = re.compile(r'token\s+(\w+)\s+("[^"]+")\s+(\d+\.?\d*)\s+("(?:[^\\"]|\\.)*")?\s*([^\n]+)')\
                       .match(line,indent+2)
                 if n:
-                    #print(n[4])
-                    tokenClass = TokenClass(tType=n[1], tokRE=re.compile(n[4]),
-                                            adjust=U.evalCallable(U.unquote(n[3])))
-                    insertTokenClass(decimal.Decimal(n[2]), tokenClass)
+                    #print(n[5])
+                    tokenClass = TokenClass(tType=n[1], tComment=n[2], tokRE=re.compile(n[5]),
+                                            adjust=U.evalCallable(U.unquote(n[4])))
+                    insertTokenClass(decimal.Decimal(n[3]), tokenClass)
                 else:
                     raise Exception("unknown %/ cmd:"+line)
         else: # multiple ordinary tokens
