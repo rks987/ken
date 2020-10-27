@@ -13,15 +13,17 @@ class Token(T.NamedTuple):
     location:T.Tuple[str,int,int]
 
 import utility as U
-import re
+import regex as re
 white: T.Pattern[str] = re.compile(r"\s*") # always matches
 upSlash: T.Pattern[str] = re.compile(r"\%\/")
 
 import decimal
-TokenClass = T.NamedTuple('TokenClass',[('tokRE',T.Pattern[str]),('adjust',str),('tType',str),('tComment',str)])
-tokenClassByPrio:T.Dict[int,TokenClass] = {}  # value for each TokenClass: list of (pattern,adjustment,tType)
-tokenClassPrios:T.List[int] = []   # keep sorted list of Prios, 
-def insertTokenClass(prio:int, tokenClass:TokenClass):
+D = decimal.Decimal
+TokenClass = T.NamedTuple('TokenClass',[('tokRE',T.Pattern[str]),('adjust',T.Optional[T.Callable[[T.Any],T.Any]]),
+                                        ('tType',str),('tComment',str)])
+tokenClassByPrio:T.Dict[D,T.List[TokenClass]] = {}  # value for each TokenClass: list of (pattern,adjustment,tType)
+tokenClassPrios:T.List[D] = []   # keep sorted list of Prios, 
+def insertTokenClass(prio:D, tokenClass:TokenClass):
     global tokenClassPrios
     if prio in tokenClassByPrio:
         tokenClassByPrio[prio].append(tokenClass)
@@ -30,7 +32,7 @@ def insertTokenClass(prio:int, tokenClass:TokenClass):
         tokenClassPrios = sorted([*iter(tokenClassByPrio.keys())],reverse=True)
     return
 
-def lexer(fileName:str):
+def lexer(fileName:str)->T.Iterator[Token]:
     lineNum:int = 0
     yield Token(tT=TokTT(text="!!SOF",tType="OperatorOnly"),indent=0,whiteB4=False,
                location=(fileName,0,0))
@@ -54,20 +56,20 @@ def lexer(fileName:str):
                     #print(n[5])
                     tokenClass = TokenClass(tType=n[1], tComment=n[2], tokRE=re.compile(n[5]),
                                             adjust=U.evalCallable(U.unquote(n[4])))
-                    insertTokenClass(decimal.Decimal(n[3]), tokenClass)
+                    insertTokenClass(D(n[3]), tokenClass)
                 else:
                     raise Exception("unknown %/ cmd:"+line)
         else: # multiple ordinary tokens
             while pos!=len(line):
                 Found = C.namedtuple('Found',['tokTT','length'])    
-                found = None
+                found:T.Optional[Found] = None
                 for p in tokenClassPrios:
                     if found!=None:
                         break # must have found one at higher priority
                     for tc in tokenClassByPrio[p]:
-                        tm = tc.tokRE.match(line,pos)
+                        tm:T.Match[str] = tc.tokRE.match(line,pos)
                         if tm:
-                            tt = tm['token'] if tc.adjust==None else tc.adjust(tm['token'])
+                            tt:str = tm['token'] if tc.adjust==None else tc.adjust(tm['token'])
                             tokTT = TokTT(text=tt,tType=tc.tType)
                             if found!=None:
                                 if found!=Found(tokTT=tokTT,length=len(tm[0])):
@@ -76,8 +78,8 @@ def lexer(fileName:str):
                             else:
                                 found = Found(tokTT=tokTT,length=len(tm[0]))
                 if found:
-                    wm = white.match(line, pos+found.length)
-                    gotWhite = pos+found.length==len(line) or len(wm[0])>0
+                    wm:T.Match[str] = white.match(line, pos+found.length)
+                    gotWhite:bool = pos+found.length==len(line) or len(wm[0])>0
                     if found.tokTT.tType!='Comment':
                         yield Token(tT=found.tokTT,indent=indent,
                                     whiteB4=whiteB4, location=(fileName,lineNum,pos))

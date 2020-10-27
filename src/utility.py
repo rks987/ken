@@ -7,8 +7,10 @@ def die(s,fn,lineNum,pos):
 
 import re
 
-def unquote(s:str)->str: # remove leading/trailing " and convert \\ to \ and \" to "
-    if s==None: return None
+def unquote(s:T.Optional[str])->T.Optional[str]: # remove leading/trailing " and convert \\ to \ and \" to "
+    if s==None: 
+        return None
+    assert isinstance(s,str)
     if s=='""': return '' # special case doesn't match following sanity check
     assert s[0]=='"' and s[-1]=='"' and s[1]!='"' and s[-2]!='\\' and re.search(r'[^\\]"',s[1:-1])==None
     return re.sub(r'\\(.)',r'\1',s[1:-1])
@@ -25,8 +27,9 @@ def findDeep(x,it)->bool:
         except: # should check for TypeError only? FIXME
             return False
 
-def evalCallable(s:str) -> T.Callable[[T.Any],T.Any]: # string s should give a callable, for None return None
+def evalCallable(s:T.Optional[str]) -> T.Optional[T.Callable[[T.Any],T.Any]]:
     if s==None: return None
+    assert isinstance(s,str)
     rslt = eval(s)
     assert callable(rslt) # still needed I think ??
     return rslt

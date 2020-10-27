@@ -1,7 +1,7 @@
 %/include ken.kh
 
     `fact = { case $:Nat of [
-                { $ = 0; 1}
+                { $ = 0; 1},
                 { $ = `n; n*fact(n-1) } # n-1 fails if n==0
               ]
             };
