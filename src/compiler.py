@@ -16,7 +16,7 @@ import kast as A
 import lexer as L
 import koperator as op # build and parse operators
 import collections as C
-import regex as re
+#import regex as re
 import interp as I
 
 operatorRE:T.Pattern[str] = re.compile(r'\s*("(?:[^\\"]|\\.)+")\s+([^\n]+)\n?$')
