@@ -30,7 +30,7 @@
 # [] -- empty list
 %^operator "empty list: [ ]" "A.AstCall(A.AstTuple(members=(A.AstIdentifier('tuple2list'),A.zeroTuple())))" ["["] ["]"]
 # [ 1 2 3 ]
-%^operator "nonempty list: [1, 2]" "A.AstIdentifier('consTuple2list')" ["["] () [" " repeating] () ["]"]
+%^operator "nonempty list: [1, 2]" "A.AstIdentifier('consTuple2list')" ["["] () ["," repeating] () ["]"]
 # [1 | [2 3]] -- but more used for pattern matching
 %^operator "prepend to list: [1 | [2 3]]" "A.AstIdentifier('prependList')" ["["] () ["|"] () ["]"]
 # unification! -- lowish priority, left but it doesn't matter
@@ -44,7 +44,7 @@
 # 3::Rational
 %^operator "view as type: x::T" "A.AstIdentifier('isType')" (90) ["::"] (91)
 # $ -- no left or right
-%^operator "parmeter: $" "A.AstClParam()" ["$"]
+%^operator "parameter: $" "A.AstClParam()" ["$"]
 # 3 >=? 4 -- returns left operand or fails
 %^operator "ge or fail: x>=?y" "A.AstIdentifier('geOrFail')" (24) [">=?"] (25)
 # 2*3

@@ -1,4 +1,4 @@
-%/include ken.kh
+%/include src/ken.kh
 
     `fact = { case $:Nat of [
                 { $ = 0; 1},

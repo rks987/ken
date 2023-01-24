@@ -1,13 +1,19 @@
-import typing as T
+import typing
+import collections.abc as ca
 
-def die(s,fn,lineNum,pos):
-    #raise Exception(s+" in "+fn+"("+str(lineNum)+"/"+str(pos)+")")
-    breakpoint()
-    pass
+def die(s:str,fn:str,lineNum:int,pos:int)->typing.NoReturn:
+    raise Exception(s+" in "+fn+"("+str(lineNum)+"/"+str(pos)+")")
+    #breakpoint
+    #pass
+
+X = typing.TypeVar("X") 
+def notNone(x:X|None)->X:
+    assert x
+    return x
 
 import re
 
-def unquote(s:T.Optional[str])->T.Optional[str]: # remove leading/trailing " and convert \\ to \ and \" to "
+def unquote(s:str|None)->str|None: # remove leading/trailing " and convert \\ to \ and \" to "
     if s==None: 
         return None
     assert isinstance(s,str)
@@ -15,7 +21,7 @@ def unquote(s:T.Optional[str])->T.Optional[str]: # remove leading/trailing " and
     assert s[0]=='"' and s[-1]=='"' and s[1]!='"' and s[-2]!='\\' and re.search(r'[^\\]"',s[1:-1])==None
     return re.sub(r'\\(.)',r'\1',s[1:-1])
 
-def findDeep(x,it)->bool:
+def findDeep(x:typing.Any,it:typing.Any)->bool:
     if x==it: 
         return True
     else:
@@ -27,7 +33,7 @@ def findDeep(x,it)->bool:
         except: # should check for TypeError only? FIXME
             return False
 
-def evalCallable(s:T.Optional[str]) -> T.Optional[T.Callable[[T.Any],T.Any]]:
+def evalCallable(s:str|None) -> ca.Callable[[typing.Any],typing.Any] | None:
     if s==None: return None
     assert isinstance(s,str)
     rslt = eval(s)
@@ -35,7 +41,8 @@ def evalCallable(s:T.Optional[str]) -> T.Optional[T.Callable[[T.Any],T.Any]]:
     return rslt
 
 # to type this need the tricky stuff FIXME
-def prependGen(hd,tl):
+Y = typing.TypeVar('Y')
+def prependGen(hd:Y,tl:ca.Generator[Y,None,None])->ca.Generator[Y,None,None]:
     yield hd
     yield from tl
 

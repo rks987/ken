@@ -10,22 +10,25 @@
 # So you can get the same token with different token type (tType).
 # Operator code should checks for TokenType as Identifier or OperatorOnly.
 
-import typing as T
+#import typing as T
 import utility as U
 import kast as A
 import lexer as L
 import koperator as op # build and parse operators
-import collections as C
+import collections.abc as ca
+import re
 #import regex as re
-import interp as I
+#import interp as I
+import decimal
+D = decimal.Decimal
 
-operatorRE:T.Pattern[str] = re.compile(r'\s*("(?:[^\\"]|\\.)+")\s+([^\n]+)\n?$')
+operatorRE:re.Pattern[str] = re.compile(r'\s*("(?:[^\\"]|\\.)+")\s+([^\n]+)\n?$')
 
 def doKCTcmd(cmd:str, tok:L.Token)->A.AstTuple:
     if 'operator '==cmd[0:9]:
-        mo:T.Match[str] = operatorRE.match(cmd[9:])
+        mo:re.Match[str]|None = operatorRE.match(cmd[9:])
         if mo:
-            op.doOperatorCmd(U.unquote(mo[1]),mo[2])
+            op.doOperatorCmd(U.notNone(U.unquote(mo[1])),mo[2])
         else: 
             U.die("invalid operator decl: "+cmd,*tok.location)
     #elif 'defaultOperand '==cmd[0:15]:
@@ -40,14 +43,14 @@ def doKCTcmd(cmd:str, tok:L.Token)->A.AstTuple:
         U.die("unknown KCTcmd: "+cmd,*tok.location) 
     return A.zeroTuple() #?? defaultOperand
 
-def opFunL(fun:T.Union[A.AstNode,T.Callable[[A.AstNode],A.AstNode]], astL:T.Tuple[A.AstNode])->A.AstNode:
+def opFunL(fun:A.AstNode|ca.Callable[[tuple[A.AstNode,...]],A.AstNode], astL:tuple[A.AstNode,...])->A.AstNode:
     #for a in astL: assert isinstance(a,A.AstNode)
     if callable(fun):
         return fun(astL)
     assert isinstance(fun,A.AstNode)
     if len(astL)==0: return fun # operator with no left or right - just return its fun
     return opFunAst(fun, astL[0] if len(astL)==1 else A.AstTuple(members=tuple(astL)))
-def opFunAst(fun:Optional[A.AstNode],pAst:A.AstNode)->A.AstNode:
+def opFunAst(fun:A.AstNode|None,pAst:A.AstNode)->A.AstNode:
     #assert isinstance(pAst,A.AstNode)
     if fun==None: 
         return pAst
@@ -68,32 +71,35 @@ def opFunAst(fun:Optional[A.AstNode],pAst:A.AstNode)->A.AstNode:
 # and if so delete all pairs that have a different nextMandatory; (b) otherwise
 # it is the operator of some inner expr, so call getExpr recursively to get that.
 # Also need to catch the case where there is/isn't an intervening operand.
+from dataclasses import dataclass
 
-class OpCtx(T.NamedTuple):
-    upOpCtx: OpCtx
+@dataclass(frozen=True,slots=True)
+class OpCtx:
+    upOpCtx: 'OpCtx'
     indx: int
-    altOpInfos: T.List[op.OpInfo]
+    altOpInfos: list[op.OpInfo]
 #OpCtx = C.namedtuple('OpCtx','upOpCtx,indx,altOpInfos') # indx is where we are in any
                                                      # of opInfos -- op.OpInfo
 
-def posSubop(tokTT:L.TokTT,opCtx:Optional[OpCtx])->bool:
+def posSubop(tokTT:L.TokTT,opCtx:OpCtx|None)->bool:
     # remember altOpInfos are all the same on optional or repeating, can only differ
     # in nextMandatory (=nextPossibles[-1] if present)
     if tokTT.tType not in ['Identifier','OperatorOnly']: return False # REF-1
-    if opCtx==None or len(opCtx.altOpInfos)==0: return False
-    if any(tokTT.text in opCtx.altOpInfos[i].subops[opCtx.indx].v['nextPossibles']\
+    if opCtx is None or len(opCtx.altOpInfos)==0: return False
+    if any(tokTT.text in opCtx.altOpInfos[i].subops[opCtx.indx].nextPossibles\
             for i in range(len(opCtx.altOpInfos))):
         return True
     for oi in opCtx.altOpInfos:
-        if tokTT.text == oi.subops[opCtx.indx].v['nextMandatory']:
+        if tokTT.text == oi.subops[opCtx.indx].nextMandatory:
             return True
     # if any of the options has no nextMandatory, then we need to look up
     for oi in opCtx.altOpInfos:
-        if oi.subops[opCtx.indx].v['nextMandatory']==None:
+        if oi.subops[opCtx.indx].nextMandatory is None:
             return posSubop(tokTT,opCtx.upOpCtx)
     return False
 
-def needNoLeft(tok,toks,opCtx,noneOK):
+def needNoLeft(tok:L.Token,toks:ca.Generator[L.Token,None,None],opCtx:OpCtx,noneOK:bool)->\
+            tuple[L.Token|None,ca.Generator[L.Token,None,None]]:
     if (tok.tT.tType in ['Identifier','OperatorOnly']) and ((posSubop(tok.tT,opCtx)) or \
                          ((tok.tT.text not in op.noLeft) and (tok.tT.text in op.withLeft))):
         # should have had a left or operand preceding subop
@@ -101,15 +107,16 @@ def needNoLeft(tok,toks,opCtx,noneOK):
             return None,U.prependGen(tok,toks)
         # better insert defaultOperand
         defOperandTok = L.Token(tT=L.TokTT(text='!!defaultOperand',tType='OperatorOnly'),
-                                indent=None,whiteB4=False,location=tok.location)
+                                indent=tok.indent,whiteB4=False,location=tok.location)
         return defOperandTok, U.prependGen(tok,toks) # backup a bit
     return tok,toks
 
-def needLeft(tok,toks):
+def needLeft(tok:L.Token,toks:ca.Generator[L.Token,None,None])->\
+            tuple[L.Token,ca.Generator[L.Token,None,None]]:
     if (tok.tT.tType not in ['Identifier','OperatorOnly']) or (tok.tT.text not in op.withLeft):
         # insert space or adjacency subop
         return L.Token(tT=L.TokTT(text=(" " if tok.whiteB4 else ""),tType='OperatorOnly'),
-                          indent=-1,whiteB4=False,location=tok.location),\
+                          indent=tok.indent,whiteB4=False,location=tok.location),\
                U.prependGen(tok,toks)
     return tok,toks
 
@@ -118,7 +125,8 @@ def needLeft(tok,toks):
 # left unless the following token is an
 # operator that takes a left. However whether we give it to that operator
 # depends on precedence. 
-def getExpr(toks,left,prio,opCtx,noneOK):
+def getExpr(toks:ca.Generator[L.Token,None,None],left:A.AstNode|None,prio:D|None,opCtx:OpCtx,noneOK:bool) \
+           ->tuple[A.AstNode|None,ca.Generator[L.Token,None,None]]:
     # toks is the token generator. Can push tokens back using prependGen
     # left is the left parameter if there is one
     # prio is the right priority if the caller has gone past mandatory subops
@@ -127,11 +135,13 @@ def getExpr(toks,left,prio,opCtx,noneOK):
     #
     # return an ast, and the token generator as possibly modified
     tok = next(toks,None)
+    assert tok is not None
 
     while (tok.tT.tType=='Comment') or (tok.tT.tType=='MCTcmd'):
         if tok.tT.tType=='MCTcmd':
-            doMCTcmd(tok.tT.text,tok)
+            doKCTcmd(tok.tT.text,tok)
         tok = next(toks,None)
+        assert tok is not None
 
     # we're at the start here - get the relevant opInfo
     #
@@ -288,7 +298,7 @@ class FakeAstClosure(A.AstClosure):
         self.extIds = {}
 
 # Since we call getExpr with no left, must start with a noLeft op, presumably !!SOF
-def compiler(toks):
+def compiler(toks:ca.Generator(L.Token,None,None))->AstClosure:
     doMCTcmd('operator "A.AstTuple" ["!!defaultOperand"]',None)
     doMCTcmd('operator "None" ["!!SOF"] ["!!EOF"]',None)
     doMCTcmd('operator "None" ["!!SOF"] () ["!!EOF"]',None)

@@ -1,22 +1,21 @@
 # kast.py supports the Ken ast
 #
-import typing as T
-Opt = T.Optional
+#import typing as T
 #import abc # abstract base class
 import operator, functools
 import kprimitive as P
 
-def ppFix(lines,indent): # squeeze to one line if convenient
+def ppFix(lines:list[str],indent:int)->list[str]: # squeeze to one line if convenient
     if sum((len(l)-indent) for l in lines) < 40:
         return [' '*indent+functools.reduce(operator.add,(l.lstrip().rstrip()+' ' for l in lines))]
     return lines
 
 class AstNode:
-    def __init__(self,parent:Opt[AstNode]=None,closure:Opt[AstClosure]=None)->None:
+    def __init__(self,parent:'AstNode'|None=None,closure:'AstClosure'|None=None):
         self.parent = parent   # up a level
         self.closure = closure # closure we're in (None for top level)
         self.fixed:bool = False
-    def fixUp(self,parent:Opt[AstNode],closure:Opt[AstClosure],upChain:List[AstNode])->None:
+    def fixUp(self,parent:'AstNode'|None,closure:'AstClosure'|None,upChain:tuple['AstNode',...])->None:
         # override fixUp if have subexpressions
         if self.fixed:
             pass #assert False
@@ -24,18 +23,19 @@ class AstNode:
         self.parent = parent
         self.closure = closure
         assert self not in upChain
-        self.upChain:T.List[AstNode] = upChain
+        self.upChain:tuple[AstNode,...] = upChain
         #return self
     def gotClRslt(self)->bool:
         return False # default
     def __str__(self)->str:
         assert False # must be overridden
-    def pp(self,indent=1): # return a list of strings
+    def pp(self,indent:int=1): # return a list of strings
         return [(' '*indent) + self.__str__()] # default
 
 class AstTuple(AstNode):
-    def __init__(self,members:T.Union[AstNode,T.Tuple[AstNode,...]],parent=None,closure=None):
-        self.members:T.Tuple[AstNode] = (members,) if isinstance(members,AstNode) else members
+    def __init__(self,members:tuple[AstNode,...],parent:AstNode|None=None,closure:'AstClosure'|None=None):
+        #self.members = (members,) if isinstance(members,AstNode) else members
+        self.members = members
         #assert isinstance(members,tuple)
         super().__init__(parent,closure)
     def __str__(self)->str:
@@ -45,7 +45,7 @@ class AstTuple(AstNode):
         return rslt[:-1]+')'
     def gotClRslt(self)->bool:
         return any(e.gotClRslt() for e in self.members)
-    def pp(self,indent=1): 
+    def pp(self,indent:int=1): 
         if self.members==():
             return [(' '*indent)+'()']
         elif len(self.members)==1:
@@ -75,16 +75,16 @@ def zeroTuple()->AstTuple:  # is Unit.unit = defaultOperand in wombat
 #def toDiscard(x):
 #    return AstDiscard()
 
-def toClosure(exprL:T.List[AstNode])->AstClosure: # param is 1-elt list with closure expr as the 1 elt
+def toClosure(exprL:list[AstNode])->'AstClosure': # param is 1-elt list with closure expr as the 1 elt
     assert len(exprL)==1 and isinstance(exprL[0],AstNode)
     return AstClosure(expr=exprL[0])
 
 class AstClosure(AstNode):
-    def __init__(self,expr:AstNode,parent:Opt[AstNode]=None,closure:Opt[AstClosure]=None):
+    def __init__(self,expr:AstNode,parent:AstNode|None=None,closure:'AstClosure'|None=None):
         super().__init__(parent,closure)
         self.expr = expr
-        self.myIds:Dict[str,AstNode] = {}
-        self.extIds:Dict[str,List[AstClosure]] = {}
+        self.myIds:dict[str,list['AstIdentifier']] = {}
+        self.extIds:dict[str,list[AstClosure]] = {}
         # need to make sure there is an AstClRslt
         if not self.expr.gotClRslt():
             # FIXME not the right way to do this, but ok for interp where equal is builtin
@@ -92,12 +92,13 @@ class AstClosure(AstNode):
             self.expr = AstCall(eqProcParam)
     def __str__(self)->str:
         return '{'+self.expr.__str__()+'}'
-    def pp(self,indent=1):
+    def pp(self,indent:int=1):
         return ppFix([' '*indent+'{'] + self.expr.pp(indent+2) + [(' '*indent)+'}'], indent)
-    def fixUp(self,parent:Opt[AstNode],closure:Opt[AstClosure],upChain:List[AstNode])->None:
+    def fixUp(self,parent:AstNode|None,closure:'AstClosure'|None,upChain:tuple[AstNode,...])->None:
         super().fixUp(parent,closure,upChain)
         self.expr.fixUp(self,self,upChain+(self,)) # I am up and closure
         for idn in self.extIds:
+            assert closure
             if idn not in closure.extIds and idn not in closure.myIds:
                 closure.extIds[idn] = [self]
             elif idn in closure.extIds:
@@ -107,13 +108,13 @@ class AstClosure(AstNode):
         pass #return self
 
 class AstClParam(AstNode): # i.e. $
-    def __init__(self,parent:Opt[AstNode]=None,closure:Opt[AstClosure]=None)->None:
+    def __init__(self,parent:AstNode|None=None,closure:AstClosure|None=None):
         super().__init__(parent,closure)
     def __str__(self)->str:
         return '$'
 
 class AstClRslt(AstNode): # i.e. `$
-    def __init__(self,parent:Opt[AstNode]=None,closure:Opt[AstClosure]=None)->None:
+    def __init__(self,parent:AstNode|None=None,closure:AstClosure|None=None):
         super().__init__(parent,closure)
     def gotClRslt(self)->bool:
         return True
@@ -121,10 +122,10 @@ class AstClRslt(AstNode): # i.e. `$
         return '`$'
 
 class AstIdentifier(AstNode):
-    def __init__(self,identifier:str,parent:Opt[AstNode]=None,closure:Opt[AstClosure]=None)->None:
+    def __init__(self,identifier:str,parent:AstNode|None=None,closure:AstClosure|None=None):
         super().__init__(parent,closure)
         self.identifier = identifier
-    def fixUp(self,parent:Opt[AstNode],closure:Opt[AstClosure],upChain:List[AstNode])->None:
+    def fixUp(self,parent:AstNode|None,closure:AstClosure|None,upChain:tuple[AstNode,...])->None:
         super().fixUp(parent,closure,upChain)
         idn = self.identifier
         if idn in closure.myIds:
@@ -183,7 +184,7 @@ class AstCall(AstNode):
     def gotClRslt(self)->bool:
         return self.procParam.gotClRslt()
 
-def callOp(procAndParam:T.Tuple[AstNode,AstNode])->AstCall:
+def callOp(procAndParam:tuple[AstNode,AstNode])->AstCall:
     return AstCall(procParam=AstTuple(members=procAndParam))
 
 # These constants are really wombat not marsupial. FIXME
