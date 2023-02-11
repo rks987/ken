@@ -9,7 +9,7 @@
 import cttypes as T
 import decimal
 
-def isABase(t1,t2): # returns up-down pair, or None
+def isABase(t1:T.MtVal,t2:T.MtVal)->tuple[T.MtVal,T.MtVal]|None: # returns up-down pair, or None
     assert t1.tMsubset == t2.tMsubset == None
     if t1==t2: return ( (lambda x: x), (lambda y: y))
     elif t1==T.mvtEmpty: return ( assertFalse, assertFalse )

@@ -16,6 +16,8 @@ class Token:
     whiteB4:bool
     location:tuple[str,int,int] # file, line, char
 
+delimToken = Token(tT=TokTT(text="*",tType="*"),indent=0,whiteB4=False,location=("*",0,0))
+
 import utility as U
 import re
 #import regex as re

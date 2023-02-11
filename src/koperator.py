@@ -53,7 +53,7 @@ class SSparam:
     pos:int
     oneAdjust:A.AstNode|ca.Callable[[A.AstNode],A.AstNode]|None
     ssParamLen:int
-    subsubs:list['SSsubop']
+    subsubs:list['SSsubop']|None
 
 #SSsubop = C.namedtuple('SSsubop','subop,occur,allAdjust,v')
                        # v a dict with param,nextMandatory,nextPossibles
@@ -78,17 +78,17 @@ withLeft:OpDict = {}
 # some interaction with the lexer. At the moment there is a danger of mistaking
 # an atom or string for an operator by looking at the text and not checking
 # the tokenType. FIXME (big job)
-def getKeyTuple(subops:list[SSsubop])->OpKey:
+def getKeyTuple(subops:list[SSsubop])->tuple[str|None,...]:
     if subops==[]:
         return () # empty tuple if no more
-    kt0 = () # zero tuple
+    kt0:tuple[str|None,...] = () # zero tuple
     if subops[0].occur=="mandatory":
         if subops[0].param!=None: # funny place to put this check
             assert subops[0].param.subsubs==None
-        kt0 = (subops[0].subop,) # 1-tuple
+        kt0:tuple[str|None,...] = (subops[0].subop,) # 1-tuple
         if len(subops)>1 and subops[0].param==None:
-            kt0 = (subops[0].subop,None)
-    return kt0+getKeyTuple(subops[1:]) # + is tuple concat
+            kt0:tuple[str|None,...] = (subops[0].subop,None)
+    return kt0+getKeyTuple(subops[1:]) # type: ignore # + is tuple concat
 
 def getZeroOpInfo(whichDict:OpDict,partkey:OpKey)->OpInfo: # usually just first
     whichDictOfpartkey:OpInfo|list[OpKey] = whichDict[partkey]
@@ -101,8 +101,10 @@ def getZeroOpInfo(whichDict:OpDict,partkey:OpKey)->OpInfo: # usually just first
         assert isinstance(w,OpInfo)
         return w # return first #type FIXME
 
-def subsubEqual(ss1:list[SSsubop],ss2:list[SSsubop]): # just a recursive assert
+def subsubEqual(ss1:list[SSsubop]|None,ss2:list[SSsubop]|None): # just a recursive assert
     if ss1==ss2: return
+    assert ss1 is not None
+    assert ss2 is not None
     assert ss1[0].subop == ss2[0].subop
     assert ss1[0].occur == ss2[0].occur
     match ss1[0].param:
@@ -178,7 +180,7 @@ def insertOp(whichDict:OpDict, opInfo:OpInfo):
             whichDict[U.notNone(curKey[0])] = whichDict[curKey] # HACK
         curKey = curKey[:-1] # truncate
 
-def mctlEval(s:str|None)->ca.Callable[[A.AstNode],A.AstNode]|A.AstNode|None: # typing FIXME
+def kctlEval(s:str|None)->ca.Callable[[A.AstNode],A.AstNode]|A.AstNode|None: # typing FIXME
     if s==None: return None
     rslt = eval(s)
     assert rslt==None or callable(rslt) or isinstance(rslt,A.AstNode)
@@ -223,7 +225,7 @@ def genSopSpec(fromRE:ca.Iterator[re.Match[str]])->ca.Generator[SSsubop|SSparam,
             if mss.group("occur"): occur = mss.group("occur")
             yield SSsubop(subop=U.notNone(U.unquote(mss.group("subop"))),
                           occur=occur,
-                          allAdjust=mctlEval(U.notNone(U.unquote(mss.group("allAdjust")))),
+                          allAdjust=kctlEval(U.notNone(U.unquote(mss.group("allAdjust")))),
                           param=None,
                           nextMandatory=None,
                           nextPossibles=[]
@@ -234,7 +236,7 @@ def genSopSpec(fromRE:ca.Iterator[re.Match[str]])->ca.Generator[SSsubop|SSparam,
             _dummyLeft,subsubs,ssParamLen=getSopSpec(mss.group("subsubs"))
             yield SSparam(precedence=D.Decimal(pT) if isinstance(pT,str) else None,
                           pos=pos,
-                          oneAdjust=mctlEval(U.unquote(mss.group("oneAdjust"))),
+                          oneAdjust=kctlEval(U.unquote(mss.group("oneAdjust"))),
                           ssParamLen=ssParamLen,
                           subsubs=subsubs)
             pos = pos+1
@@ -311,12 +313,12 @@ def getSopSpec(sopSpecText:str|None)->tuple[SSparam|None,list[SSsubop],int]:
     return left,sopSpec,pLen
 
 def doOperatorCmd(astFun:str,sopSpecText:str):
-    # op is the operator being defined = first sop
+    # op is the operator being defined 
     # astFun is compile time code (python3) generating an AST for the procedure
     # sopSpec: see compiler.md
     left,sopSpec,pCnt = getSopSpec(sopSpecText)
     insertOp((withLeft if left else noLeft),
-             OpInfo(left=left,astFun=mctlEval(astFun),paramLen=pCnt,subops=sopSpec))
+             OpInfo(left=left,astFun=kctlEval(astFun),paramLen=pCnt,subops=sopSpec))
 
 # first2rest is a common allAdjust parameter, used where we put the first part
 # of a tuple operand, then have the rest as a repeating operand.

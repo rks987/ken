@@ -17,7 +17,7 @@ import interp as I
 #from dataclasses import dataclass
 
 class TFam:
-    def __init__(self,tCode:typing.Callable[[str,...],None]): #FIXME
+    def __init__(self,tCode:typing.Callable[...,None]): #FIXME
         assert callable(tCode)
         self.tCode = tCode
 
@@ -50,7 +50,7 @@ class PVrun:
         self.pt = None # param type
         self.rt = None # result type
         self.txt = None
-    def pTrT(self,pt,rt): # take parameter and result and return new ones
+    def pTrT(self,pt:T.MtVal,rt:T.MtVal)->tuple[T.MtVal,T.MtVal]: # take parameter and result and return new ones
         assert False # must override
 
 # statements -- Any x _X => _X
@@ -62,8 +62,8 @@ class PvRstatements(PVrun):
     def __init__(self,caller):
         super().__init__(caller)
         self.txt='(;)'
-    def pTrT(self,pt,rt):
-        assert pt.tMfamily==T.mfTuple and len(pt.tMindx)==2
+    def pTrT(self,pt:T.MtVal,rt:T.MtVal)->tuple[T.MtVal,T.MtVal]:
+        assert pt.tMfamily==T.mfTuple and not isinstance(pt.tMindx,T.MtVal) and pt.tMindx is not None and len(pt.tMindx)==2
         if pt.tMindx[0]==T.mvtEmpty: return T.mvtAny,T.mvtEmpty # fail
         self.rt = H.intersection2(pt.tMindx[1],rt)
         self.pt = L.bind(pt).tMindx[1].set(self.rt)
