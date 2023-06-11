@@ -80,6 +80,7 @@ class OpCtx:
     altOpInfos: list[op.OpInfo]
 #OpCtx = C.namedtuple('OpCtx','upOpCtx,indx,altOpInfos') # indx is where we are in any
                                                      # of opInfos -- op.OpInfo
+#outerOpCtx:OpCtx = OpCtx(upOpCtx=outerOpCtx,indx=0,altOpInfos=[])
 
 def posSubop(tokTT:L.TokTT,opCtx:OpCtx|None)->bool:
     # remember altOpInfos are all the same on optional or repeating, can only differ
@@ -134,14 +135,14 @@ def getExpr(toks:ca.Generator[L.Token,None,None],left:A.AstNode|None,prio:D|None
     # noneOK -- true if we might have no expr (returning None)
     #
     # return an ast, and the token generator as possibly modified
-    tok = next(toks,None)
-    assert tok is not None
+    tok = next(toks)
+    #assert tok is not None
 
     while (tok.tT.tType=='Comment') or (tok.tT.tType=='MCTcmd'):
         if tok.tT.tType=='MCTcmd':
             doKCTcmd(tok.tT.text,tok)
-        tok = next(toks,None)
-        assert tok is not None
+        tok = next(toks)
+        #assert tok is not None
 
     # we're at the start here - get the relevant opInfo
     #
@@ -156,7 +157,7 @@ def getExpr(toks:ca.Generator[L.Token,None,None],left:A.AstNode|None,prio:D|None
         if posSubop(tok.tT,opCtx): # this can happen if tok is insert " ", but maybe else
             return left,U.prependGen(tok,toks) # put space subop into toks
         assert (tok.tT.tType in ['Identifier','OperatorOnly']) and (tok.tT.text in op.withLeft)
-        if (prio!=None) and (op.getZeroOpInfo(op.withLeft,(tok.tT.text,)).left.precedence < prio) :
+        if (prio!=None) and (U.notNone(U.notNone(op.getZeroOpInfo(op.withLeft,(tok.tT.text,)).left).precedence) < prio) :
             # push the tok back and just return the left to go with the source of prio
             return left,U.prependGen(tok,toks)
 
@@ -175,18 +176,25 @@ def getExpr(toks:ca.Generator[L.Token,None,None],left:A.AstNode|None,prio:D|None
     else:
         # at this point we are ready to start chewing up subops. It's exactly like subsubs,
         # except that ...
-        oiL = [opDict[tok.tT.text]] if isinstance(opDict[tok.tT.text],op.OpInfo) else \
-                                [opDict[t] for t in opDict[tok.tT.text]]
+        if isinstance(opDict[tok.tT.text],op.OpInfo):
+            oiL = [opDict[tok.tT.text]]
+        else:
+            x = opDict[tok.tT.text]
+            assert isinstance(x,str)
+            oiL = opDict[x]
+        assert isinstance(oiL,op.OpInfo)
+                                #[opDict[t] for t in opDict[tok.tT.text]]
         # in next line, want to reprocess op = 1st subop
         opInfo,pAsts,toks = getSubops(toks=U.prependGen(tok,toks),\
-                                  opCtx=OpCtx(upOpCtx=opCtx,indx=0,altOpInfos=oiL))
+                                  opCtx=OpCtx(upOpCtx=opCtx,indx=0,altOpInfos=[oiL]))
         if opInfo.left!=None: # pAsts is a list of multiple params
-            pAsts[0] = left # add in left param
-        ast = opFunL(opInfo.astFun,tuple(pAsts))
+            pAsts[0] = U.notNone(left) # add in left param
+        assert opInfo.astFun is not None
+        ast = opFunL(opInfo.astFun,tuple(pAsts)) # type: ignore
     # at this point the next tok might be a nextPos for our parent, otherwise we've
     # got a left and we should keep looking
-    tok = next(toks,None)
-    if tok==None or posSubop(tok.tT,opCtx):
+    tok = next(toks)
+    if posSubop(tok.tT,opCtx):
         return ast,U.prependGen(tok,toks)
     # only option now is that what we have is a left operand for what follows. 
     # Don't need to insert a space/adjacent (sub)op -- needLeft will fix it
@@ -196,12 +204,13 @@ def getExpr(toks:ca.Generator[L.Token,None,None],left:A.AstNode|None,prio:D|None
 # we get a list of possible SSsubop lists, expecting to match one. We return a tuple
 # with (1) the one we matched; (2) list of param ASTs; (3) the token generator. We will
 # have pushed back the token that has lower left precedence than our right precedence.
-def getSubops( toks,opCtx):
-    tok = next(toks,None)
-    maxPL = max((oi.paramLen for oi in opCtx.altOpInfos))
-    pAstL = [None]*maxPL # list for param ast (might be truncated at the end)
-    indx = 0  # this is the index into each list in oiL
-    oiL = opCtx.altOpInfos[:] # take a copy
+def getSubops( toks:ca.Generator[L.Token,None,None],opCtx:OpCtx)-> \
+             tuple[op.OpInfo,list[A.AstNode],ca.Generator[L.Token,None,None]]:
+    tok:L.Token = next(toks)
+    maxPL:int = max((oi.paramLen for oi in opCtx.altOpInfos))
+    pAstL:list[A.AstNode|None] = [None]*maxPL # list for param ast (might be truncated at the end)
+    indx:int = 0  # this is the index into each list in oiL
+    oiL:list[op.OpInfo] = opCtx.altOpInfos[:] # take a copy
     while True:
         # if the next sop is mandatory in any of oiL then we must have it, or we can
         # delete the entries in oiL that do. Of course for the start of a top level
@@ -209,12 +218,12 @@ def getSubops( toks,opCtx):
         oiL = [oiL[i] for i in range(len(oiL)) if oiL[i].subops[indx].occur!='mandatory' or \
                                                   oiL[i].subops[indx].subop==tok.tT.text]
         assert oiL!=[]
-        if len(oiL[0].subops)-1==indx and oiL[0].subops[indx].v['param']==None:
+        if len(oiL[0].subops)-1==indx and oiL[0].subops[indx].param==None:
             # note: this special case shouldn't be needed check/FIXME.
             # the trailing subop has no right
             assert len(oiL)==1 # can't have a competitor for this!
             assert oiL[0].subops[indx].occur=='mandatory'
-            return oiL[0],pAstL[:oiL[0].paramLen],toks
+            return oiL[0],U.noNones(pAstL[:oiL[0].paramLen]),toks
         # A tricky point is that mandatory might have no following value -- its only
         # role is to pick the oiL. Optional and repeating always have a value param,
         # though sometimes no values.
@@ -225,94 +234,102 @@ def getSubops( toks,opCtx):
         assert numMandatory==0 or numMandatory==len(oiL) # all in sync.
         # They all have to agree on optional and repeat params, so we can just advance
         # indx till we hit tok
-        sopPs = [] # put values for next sop here (might be repeating)
+        sopPs:list[A.AstNode] = [] # put values for next sop here (might be repeating)
         while True:
             # come back here till past this sop (token != sop, or got 1 and not repeating)
             nextSopText = oiL[0].subops[indx].subop
             nextSopOccurs = [oiL[i].subops[indx].occur for i in range(len(oiL))]
-            nextSopvparams = [oiL[i].subops[indx].v['param'] for i in range(len(oiL))]
+            nextSopvparams = [oiL[i].subops[indx].param for i in range(len(oiL))]
             # If we have an operand, but the sop can't be repeating then this is a new sop even
             # if text the same. This happens when you want a sop to occur 1 or more times.
             if nextSopText!=tok.tT.text or (len(sopPs)==1 and 'repeating' not in nextSopOccurs):
                 if len(sopPs)==0 and None in nextSopvparams:
                     oiL = [oiL[i] for i in range(len(oiL)) \
-                            if oiL[i].subops[indx].v['param']==None]
+                            if oiL[i].subops[indx].param==None]
                     # nothing to do
                     break
                 elif 'mandatory' in nextSopOccurs: # must all be mandatory, see numMandatory
                     assert len(sopPs)==1 and all(oc=='mandatory' for oc in nextSopOccurs)
-                    pAstL[oiL[0].subops[indx].v['param'].pos] = sopPs[0] # un tuple it
+                    x = U.notNone(oiL[0].subops[indx].param)
+                    #assert isinstance(x,op.SSparam)
+                    #assert isinstance(x.pos,int)
+                    pAstL[x.pos] = sopPs[0] # un tuple it
                 else: 
                     if 'repeating' not in nextSopOccurs: # must be optional
                         assert len(sopPs)<2 and all(nso=='optional' for nso in nextSopOccurs)
                     else:
                         assert all(nso in ['optional','repeating'] for nso in nextSopOccurs)
-                    pAstL[oiL[0].subops[indx].v['param'].pos] = A.AstTuple(members=tuple(sopPs))
+                    pAstL[U.notNone(oiL[0].subops[indx].param).pos] = A.AstTuple(members=tuple(sopPs))
                 break # will loop on outer 'while True' - get more missing/optional tokens
             # If we come here then not past the current sop
             # We match the current token. If mandatory then we might have some with a
             # following parameter, and some without. Let's count
             numWithoutParam = sum((1 for i in range(len(oiL))\
-                                              if oiL[i].subops[indx].v['param']==None))
+                                              if oiL[i].subops[indx].param==None))
             noneOK = numWithoutParam > 0 # we'll disable defaultOperand
             # can't have both noneOK and a param with precedence, because noneOK requires
             # a following subop to demonstrate it, or it is a trailing mandatory.
-            precedence = None if noneOK else oiL[0].subops[indx].v['param'].precedence #all same
+            precedence = None if noneOK else U.notNone(oiL[0].subops[indx].param).precedence #all same
             p = None # not needed
             # Note that a subop with no parameter must be mandatory and have no subsubs.
             # [check doc FIXME].
             curOpCtx = OpCtx(upOpCtx=opCtx.upOpCtx, indx=indx, altOpInfos=oiL)
-            if noneOK or (oiL[0].subops[indx].v['param'].subsubs==None):
+            if noneOK or (U.notNone(oiL[0].subops[indx].param).subsubs==None):
                 # subsubs absent in one then absent in all
-                assert all(oiL[i].subops[indx].v['param']==None or\
-                        oiL[i].subops[indx].v['param'].subsubs==None for i in range(len(oiL)))
+                assert all(oiL[i].subops[indx].param==None or\
+                        U.notNone(oiL[i].subops[indx].param).subsubs==None for i in range(len(oiL)))
                 p,toks = getExpr(toks=toks,left=None,prio=precedence,opCtx=curOpCtx,noneOK=noneOK)
                 if p!=None:
-                    oiL = [oiL[i] for i in range(len(oiL)) if oiL[i].subops[indx].v['param']!=None]
-                    p = opFunAst(oiL[0].subops[indx].v['param'].oneAdjust, p) # ??
+                    oiL = [oiL[i] for i in range(len(oiL)) if oiL[i].subops[indx].param!=None]
+                    myAdjust = U.notNone(oiL[0].subops[indx].param).oneAdjust
+                    assert myAdjust is None or isinstance(myAdjust,A.AstNode)
+                    p = opFunAst(myAdjust, p) # ??
                 else:
                     # we assume that a param with no operand can't have subsubs -- document FIXME
-                    oiL = [oiL[i] for i in range(len(oiL)) if oiL[i].subops[indx].v['param']==None]
+                    oiL = [oiL[i] for i in range(len(oiL)) if oiL[i].subops[indx].param==None]
             else: # get subsubs, which must be all the same
-                #oiL = [oiL[i] for i in range(len(oiL)) if oiL[i].subops[indx].v['param']!=None]
-                assert len(oiL)==1 or all(oiL[0].subops[indx].v['param'].subsubs==\
-                        oiL[i].subops[indx].v['param'].subsubs for i in range(1,len(oiL)))
-                ssOpInfo = op.OpInfo(p, oiL[0].subops[indx].v['allAdjust'], \
-                                     oiL[0].subops[indx].v['param'].ssParamLen, \
-                                     oiL[0].subops[indx].v['param'].subsubs ) # faked up OpInfo
+                #oiL = [oiL[i] for i in range(len(oiL)) if oiL[i].subops[indx].param!=None]
+                assert len(oiL)==1 or all(U.notNone(oiL[0].subops[indx].param).subsubs==\
+                        U.notNone(oiL[i].subops[indx].param).subsubs for i in range(1,len(oiL)))
+                ssOpInfo = op.OpInfo(p, oiL[0].subops[indx].allAdjust, \
+                                     oiL[0].subops[indx].param.ssParamLen, \
+                                     oiL[0].subops[indx].param.subsubs ) # faked up OpInfo
                 ssOpCtx = OpCtx(upOpCtx=opCtx, indx=0 ,altOpInfos=[ssOpInfo]) # only 1 OpInfo
                 oi,pl,toks = getSubops(toks,ssOpCtx) # looks wrong???
                 assert oi==ssOpInfo # what else?
-                p = opFunAst(oiL[0].subops[indx].v['allAdjust'],A.AstTuple(members=pl))
+                myAAdjust = U.notNone(oiL[0].subops[indx]).allAdjust
+                assert myAAdjust is None or isinstance(myAAdjust,A.AstNode)
+                p = opFunAst(myAAdjust,A.AstTuple(members=pl))
             if p!=None: 
                 sopPs.append(p)
-            tok = next(toks,None)
+            tok = next(toks)
+            # end inner while True
         indx = indx+1
         if indx==len(oiL[0].subops): # at end
             assert len(oiL)==1
-            return oiL[0],pAstL[:oiL[0].paramLen],U.prependGen(tok,toks)
+            return oiL[0],U.noNones(pAstL[:oiL[0].paramLen]),U.prependGen(tok,toks)
+        # end outer while True
 
-class FakeAstClosure(A.AstClosure):
-    def __init__(self,builtins):
-        self.myIds = {k:[] for k,v in builtins.items()}
-        self.extIds = {}
+#class FakeAstClosure(A.AstClosure):
+#    def __init__(self,builtins:dict[str,A.AstIdentifier]):
+#        self.myIds = {k:[] for k,_ in builtins.items()}
+#        self.extIds = {}
 
+import interp as I
 # Since we call getExpr with no left, must start with a noLeft op, presumably !!SOF
-def compiler(toks:ca.Generator(L.Token,None,None))->AstClosure:
-    doMCTcmd('operator "A.AstTuple" ["!!defaultOperand"]',None)
-    doMCTcmd('operator "None" ["!!SOF"] ["!!EOF"]',None)
-    doMCTcmd('operator "None" ["!!SOF"] () ["!!EOF"]',None)
+def compiler(toks:ca.Generator[L.Token,None,None])->A.AstClosure:
+    doKCTcmd('operator "A.AstTuple" ["!!defaultOperand"]',L.delimToken)
+    doKCTcmd('operator "None" ["!!SOF"] ["!!EOF"]',L.delimToken)
+    doKCTcmd('operator "None" ["!!SOF"] () ["!!EOF"]',L.delimToken)
     #opCtx = OpCtx(upOpCtx=None,indx=0,altOpInfos=[])
-    e,toks = getExpr(toks=toks,left=None,prio=None,opCtx=None,noneOK=False)
+    e,toks = getExpr(toks=toks,left=None,prio=None,opCtx=None,noneOK=False) # type: ignore
     c = A.AstClosure(e)
-    c.fixUp(parent=None,closure=FakeAstClosure(I.builtins),upChain=()) # will fixup e as well
+    c.fixUp(parent=None,closure=I.FakeClosure,upChain=()) # will fixup e as well
     return c
 
 import sys
 
 if __name__=="__main__":
-    import lexer
-    global ast
     global debug
     debug = len(sys.argv)>2
     ast = compiler(L.lexer(sys.argv[1]))

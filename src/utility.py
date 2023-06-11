@@ -10,6 +10,14 @@ X = typing.TypeVar("X")
 def notNone(x:X|None)->X:
     assert x
     return x
+A = typing.TypeVar("A")
+B = typing.TypeVar("B")
+#def notB(x:A|B|None)->A|None:
+#    assert isinstance(x,A) or 
+#    return x
+Z = typing.TypeVar("Z")
+def noNones(lz:list[Z|None])->list[Z]:
+    return [notNone(lz[i]) for i in range(len(lz))]
 
 import re
 

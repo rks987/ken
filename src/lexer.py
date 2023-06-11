@@ -16,6 +16,8 @@ class Token:
     whiteB4:bool
     location:tuple[str,int,int] # file, line, char
 
+delimToken = Token(tT=TokTT(text="*",tType="*"),indent=0,whiteB4=False,location=("*",0,0))
+
 import utility as U
 import re
 #import regex as re
@@ -35,7 +37,7 @@ class TokenClass:
     tType:str
     tComment:str
 tokenClassByPrio:dict[D,list[TokenClass]] = {}  # value for each TokenClass: list of (pattern,adjustment,tType)
-tokenClassPrios:list[D] = []   # keep descending sorted list of Prios
+tokenClassPrios:list[D] = []   # keep descending sorted list of Prios.
 def insertTokenClass(prio:D, tokenClass:TokenClass):
     global tokenClassPrios
     if prio in tokenClassByPrio:
