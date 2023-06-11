@@ -323,15 +323,18 @@ def compiler(toks:ca.Generator[L.Token,None,None])->A.AstClosure:
     doKCTcmd('operator "None" ["!!SOF"] () ["!!EOF"]',L.delimToken)
     #opCtx = OpCtx(upOpCtx=None,indx=0,altOpInfos=[])
     e,toks = getExpr(toks=toks,left=None,prio=None,opCtx=None,noneOK=False) # type: ignore
+    assert e is not None
     c = A.AstClosure(e)
-    c.fixUp(parent=None,closure=I.FakeClosure,upChain=()) # will fixup e as well
+    #c.fixUp(parent=None,closure=I.FakeClosure,upChain=()) # will fixup e as well
     return c
 
 import sys
 
 if __name__=="__main__":
+    #import lexer
+    global ast
     global debug
     debug = len(sys.argv)>2
-    ast = compiler(L.lexer(sys.argv[1]))
-    #for l in ast.pp(1): print(l)
-    print( I.interp(ast,debug).pp())
+    ast = compiler(L.lexer(sys.argv[1])) # type: ignore
+    for l in ast.pp(1): print(l)
+    #print( I.interp(ast,debug).pp())

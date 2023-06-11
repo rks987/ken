@@ -180,7 +180,7 @@ def insertOp(whichDict:OpDict, opInfo:OpInfo):
             whichDict[U.notNone(curKey[0])] = whichDict[curKey] # HACK
         curKey = curKey[:-1] # truncate
 
-def kctlEval(s:str|None)->ca.Callable[[tuple[A.AstNode,...]],A.AstNode]|A.AstNode|None: # typing FIXME
+def kctlEval(s:str|None)->ca.Callable[[A.AstNode],A.AstNode]|A.AstNode|None: # typing FIXME
     if s==None: return None
     rslt = eval(s)
     assert rslt==None or callable(rslt) or isinstance(rslt,A.AstNode)
@@ -313,7 +313,7 @@ def getSopSpec(sopSpecText:str|None)->tuple[SSparam|None,list[SSsubop],int]:
     return left,sopSpec,pLen
 
 def doOperatorCmd(astFun:str,sopSpecText:str):
-    # op is the operator being defined = first sop
+    # op is the operator being defined 
     # astFun is compile time code (python3) generating an AST for the procedure
     # sopSpec: see compiler.md
     left,sopSpec,pCnt = getSopSpec(sopSpecText)

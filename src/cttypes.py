@@ -40,7 +40,7 @@ class Mfamily:
 class MtVal: 
     tMfamily:Mfamily
     tMindx:'MtVal'|tuple['MtVal',...]|None # should use Unit for index if base type ??? FIXME
-    tMsubset: tuple[T.Any,...]|None # a .value for types
+    tMsubset: tuple[typing.Any,...]|None # a .value for types
 
 def getMtMiTuple(tmi:MtVal|tuple[MtVal,...]|None)->tuple[MtVal,...]:
     assert tmi

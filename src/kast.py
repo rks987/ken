@@ -3,7 +3,7 @@
 #import typing as T
 #import abc # abstract base class
 import operator, functools
-import kprimitive as P
+#import kprimitive as P
 
 def ppFix(lines:list[str],indent:int)->list[str]: # squeeze to one line if convenient
     if sum((len(l)-indent) for l in lines) < 40:
@@ -58,7 +58,7 @@ class AstTuple(AstNode):
             return ppFix([(' '*indent)+'('] + \
             functools.reduce(operator.add, mppl) + \
             [(' '*indent)+')'],indent)
-            def fixUp(self,parent:Opt[AstNode],closure:Opt[AstClosure],upChain:List[AstNode])->None:
+            def fixUp(self,parent:AstNode|None,closure:AstClosure|None,upChain:List[AstNode])->None:
                 super().fixUp(parent,closure,upChain)
             for x in self.members: x.fixUp(self,closure,self.upChain+(self,))
         #return self
@@ -84,7 +84,7 @@ class AstClosure(AstNode):
         super().__init__(parent,closure)
         self.expr = expr
         self.myIds:dict[str,list['AstIdentifier']] = {}
-        self.extIds:dict[str,list[AstClosure]] = {}
+        self.extIds:dict[str,list[AstClosure|AstIdentifier]] = {}
         # need to make sure there is an AstClRslt
         if not self.expr.gotClRslt():
             # FIXME not the right way to do this, but ok for interp where equal is builtin
@@ -104,7 +104,7 @@ class AstClosure(AstNode):
             elif idn in closure.extIds:
                 closure.extIds[idn].append(self)
             else:
-                closure.myIds[idn].append(self) #???
+                assert idn in closure.myIds # don't need to do anything???
         pass #return self
 
 class AstClParam(AstNode): # i.e. $
@@ -124,10 +124,12 @@ class AstClRslt(AstNode): # i.e. `$
 class AstIdentifier(AstNode):
     def __init__(self,identifier:str,parent:AstNode|None=None,closure:AstClosure|None=None):
         super().__init__(parent,closure)
+        assert closure is not None
         self.identifier = identifier
     def fixUp(self,parent:AstNode|None,closure:AstClosure|None,upChain:tuple[AstNode,...])->None:
         super().fixUp(parent,closure,upChain)
         idn = self.identifier
+        assert closure is not None
         if idn in closure.myIds:
             closure.myIds[idn].append(self) # no known use of this?
         else:
@@ -138,34 +140,34 @@ class AstIdentifier(AstNode):
     def __str__(self)->str:
         return self.identifier+' '
 
-class AstNewIdentifier(AstNode):
-    def __init__(self,identifier:str,parent:Opt[AstNode]=None,closure:Opt[AstClosure]=None)->None:
-        super().__init__(parent,closure)
+class AstNewIdentifier(AstIdentifier):
+    def __init__(self,identifier:str,parent:AstNode|None=None,closure:AstClosure|None=None)->None:
+        super().__init__(identifier,parent,closure)
         self.identifier = identifier
-    def fixUp(self,parent:Opt[AstNode],closure:Opt[AstClosure],upChain:List[AstNode])->None:
+    def fixUp(self,parent:AstNode|None,closure:AstClosure|None,upChain:tuple[AstNode])->None:
         super().fixUp(parent,closure,upChain)
         idn = self.identifier
-        assert idn not in closure.myIds #and idn not in closure.extIds
+        assert closure is not None and idn not in closure.myIds 
         closure.myIds[idn] = [self] # defining use is first in list
     def __str__(self)->str: 
         return '`'+self.identifier+' '
 
 class AstFreeVariable(AstNode):
-    def __init__(self,identifier:str,parent:Opt[AstNode]=None,closure:Opt[AstClosure]=None)->None:
+    def __init__(self,identifier:str,parent:AstNode|None=None,closure:AstClosure|None=None)->None:
         super().__init__(parent,closure)
         self.identifier = identifier
     def __str__(self)->str: 
         return '_'+self.identifier+' '
 
 class AstNewFreeVariable(AstNode):
-    def __init__(self,identifier:str,parent:Opt[AstNode]=None,closure:Opt[AstClosure]=None)->None:
+    def __init__(self,identifier:str,parent:AstNode|None=None,closure:AstClosure|None=None)->None:
         super().__init__(parent,closure)
         self.identifier = identifier
     def __str__(self)->str:
         return '`_'+self.identifier+' '
 
 class AstCall(AstNode):
-    def __init__(self,procParam:AstTuple,parent:Opt[AstNode]=None,closure:Opt[AstClosure]=None)->None:
+    def __init__(self,procParam:AstTuple,parent:AstNode|None=None,closure:AstClosure|None=None)->None:
         super().__init__(parent,closure)
         self.procParam = procParam
     def __str__(self)->str:
@@ -174,11 +176,11 @@ class AstCall(AstNode):
         return self.procParam.members[0]
     def param(self)->AstNode:
         return self.procParam.members[1]
-    def pp(self,indent=1):
+    def pp(self,indent:int=1):
         f = self.funct().pp(indent)
         f[-1] += '('
         return ppFix(f+self.param().pp(indent+2)+[(' '*indent)+')'], indent)
-    def fixUp(self,parent:Opt[AstNode],closure:Opt[AstClosure],upChain:List[AstNode])->None:
+    def fixUp(self,parent:AstNode|None,closure:AstClosure|None,upChain:tuple[AstNode])->None:
         super().fixUp(parent,closure,upChain)
         self.procParam.fixUp(self,closure,self.upChain+(self,))
     def gotClRslt(self)->bool:
@@ -190,30 +192,30 @@ def callOp(procAndParam:tuple[AstNode,AstNode])->AstCall:
 # These constants are really wombat not marsupial. FIXME
 # maybe can be Mct"ConstType".fromString(const)
 class AstConstant(AstNode):
-    def __init__(self,const:str,constType:str,paren:Opt[AstNode]=None,closure:Opt[AstClosure]=None)->None:
+    def __init__(self,const:str,constType:str,parent:AstNode|None=None,closure:AstClosure|None=None)->None:
         super().__init__(parent,closure)
         self.const = const
         self.constType = constType
     def __str__(self):
         return self.const+' ' # FIXME - only right for numbers
 
-class AstPrim(AstNode):
-    def __init__(self,primVal:P.PvRun,parent:Opt[AstNode]=None,closure:Opt[AstClosure]=None)->None:
-        super().__init__(parent,closure)
-        self.primVal = primVal
-    def __str__(self):
-        return self.primVal.__str__()
+#class AstPrim(AstNode):
+#    def __init__(self,primVal:P.PvRun,parent:AstNode|None=None,closure:AstClosure|None=None)->None:
+#        super().__init__(parent,closure)
+#        self.primVal = primVal
+#    def __str__(self):
+#        return self.primVal.__str__()
 
-def first2rest(tupNodeOrList): #typing???
-    if tupNodeOrList == None: return None # for luck
+def first2rest(tupNodeOrList:AstTuple|tuple[AstNode,AstNode])->AstTuple: #typing???
+    #if tupNodeOrList == None: return None # for luck
     # commonly we have the 1st param seperated where it logically
     # belongs in with the list of following ones (e.g. comma operator)
     if isinstance(tupNodeOrList, AstTuple):
-        return AstTuple(members=first2rest(tupNodeOrList.members))
+        return AstTuple(members=first2rest(tupNodeOrList.members).members,closure=tupNodeOrList.closure,parent=tupNodeOrList.parent)
     # assume is a 2 entry list whose 2nd entry is a list or AstTuple
     if isinstance(tupNodeOrList[1], AstTuple):
-        return (tupNodeOrList[0],)+tupNodeOrList[1].members
-    return (tupNodeOrList[0],)+tupNodeOrList[1]
+        return AstTuple(members=(tupNodeOrList[0],)+tupNodeOrList[1].members,closure=tupNodeOrList[0].closure,parent=tupNodeOrList[0].parent)
+    return AstTuple(members=(tupNodeOrList[0],tupNodeOrList[1]),closure=tupNodeOrList[0].closure,parent=tupNodeOrList[0].parent)
 
 
 if __name__=="__main__":
